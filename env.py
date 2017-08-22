@@ -8,7 +8,7 @@ class env_2048(object):
         self.start_tiles_ = 2
         self.score_ = 0
         if state is None:
-            self.state_ = np.zeros((dim,dim), dtype=np.int8)
+            self.state_ = np.zeros((self.dim_,self.dim_), dtype=np.int8)
             self.add_start_tile()
         else:
             self.state_ = state.copy()
@@ -26,14 +26,19 @@ class env_2048(object):
         self.state_ = state.copy()
         self.score_ = 0
     def get_state(self):
-        return self.state_
+        return self.state_.copy()
+    def reset(self):
+        self.state_ = np.zeros((self.dim_,self.dim_), dtype=np.int8)
+        self.add_start_tile()
+        self.score_ = 0
     def act(self, action):
+        score = self.score_
         if self.move(action):
             self.add_random_tile()
-            return self.state_, self.reward(), self.is_terminate()
+            return self.state_.copy(), self.score_-score, self.is_terminate()
         else:
-            return self.state_, self.reward(), self.is_terminate()
-    def reward(self):
+            return self.state_.copy(), -1000, self.is_terminate()
+    def get_return(self):
         return self.score_
     ## functions according to 2048/js/game_manager.js
     def add_start_tile(self):
@@ -106,7 +111,42 @@ class RandomPlayer():
         self.name_ = name
     def genmove(self, state):
         return np.random.randint(4)
-
+class OneStepPlayer():
+    def __init__(self, name = 'One Step Player'):
+        self.name_ = name
+    def genmove(self, state):
+        rewards = [env_2048(state=state).act(i)[1] for i in range(4)]
+        if np.max(rewards)>0:
+            return np.argmax(rewards)
+        else:
+            return np.random.randint(4)
+class TwoStepPlayer():
+    def __init__(self, name = 'One Step Player'):
+        self.name_ = name
+    def genmove(self, state):
+        rewards = np.zeros(4, dtype=np.int32)
+        for i in range(4):
+            env = env_2048(state=state)
+            new_state, rewards[i], _ = env.act(i)
+            rewards[i] += env.act(OneStepPlayer().genmove(new_state))[1]
+        # print(rewards)
+        if np.max(rewards)>0:
+            return np.argmax(rewards)
+        else:
+            return np.random.randint(4)
+def play_once(env, player):
+    epoch=1
+    while 1:
+        a = player.genmove(env.get_state())
+        _, r, t = env.act(a)
+        if t:
+            break
+        epoch+=1
+        # print('Ehoch %d: act %s'%(epoch, a))
+    ret = env.get_return()
+    print('Ehoch %d: score %d'%(epoch, ret))
+    # print(env)
+    return ret
 if __name__ == '__main__':
     act_map = [ '↑','↓','←','→']
     s=np.array([[0, 0, 0, 0],
@@ -114,20 +154,27 @@ if __name__ == '__main__':
                 [0, 0, 0, 0],
                 [0, 0, 1, 0]], dtype=np.int8)
     env = env_2048()
-    p = RandomPlayer()
-    n_episodes = 5
-    reward = 0
+    n_episodes = 50
+    player = RandomPlayer()
+    sum_ret = 0
+    max_ret = 0
     for episode in range(n_episodes):
-        env.set_state(s)
-        print('Episode %d:'%(episode))
-        epoch=1
-        while 1:
-            a = p.genmove(env.get_state())
-            _, r, t = env.act(a)
-            print('Ehoch %d: %s %f'%(epoch,act_map[a],r))
-#            print(env)
-            if t:
-                break
-            epoch+=1
-        reward+=r
-    print(reward/n_episodes)
+        env.reset()
+        ret = play_once(env, player)
+        sum_ret += ret
+        if ret>max_ret:
+            print(env)
+            max_ret = ret
+    print('%s average score %d, max score %d'%(player.name_, sum_ret/n_episodes, max_ret))
+
+    player = TwoStepPlayer()
+    sum_ret = 0
+    max_ret = 0
+    for episode in range(n_episodes):
+        env.reset()
+        ret = play_once(env, player)
+        sum_ret += ret
+        if ret>max_ret:
+            print(env)
+            max_ret = ret
+    print('%s average score %d, max score %d'%(player.name_, sum_ret/n_episodes, max_ret))

@@ -2,7 +2,7 @@
 
 import numpy as np
 ACTION_MAP = [ '↑','↓','←','→']
-class env_2048(object):
+class Env2048(object):
     def __init__(self, dim=4, base=2, state=None):
         self.dim_ = dim
         self.base_ = base
@@ -38,7 +38,7 @@ class env_2048(object):
             self.add_random_tile()
             return self.state_.copy(), self.score_-score, self.is_terminate()
         else:
-            return self.state_.copy(), -1000, self.is_terminate()
+            return self.state_.copy(), -8, self.is_terminate()
     def get_return(self):
         return self.score_
     ## functions according to 2048/js/game_manager.js
@@ -107,37 +107,54 @@ class env_2048(object):
                 self.state_[i,-1::-1], c = self.emit_line(self.state_[i,-1::-1])
                 changed = changed or c
         return changed
+    
 class RandomPlayer():
+    """
+    A player which will take random move
+    on 100 simulations: average score 1093, max score 2736
+    """
     def __init__(self, name = 'Random Player'):
         self.name_ = name
     def genmove(self, state):
         return np.random.randint(4)
+    
 class OneStepPlayer():
+    """
+    A player which will search one step forward.
+    on 100 simulations: average score 1811, max score 6192
+    """
     def __init__(self, name = 'One Step Player'):
         self.name_ = name
     def genmove(self, state):
-        rewards = [env_2048(state=state).act(i)[1] for i in range(4)]
+        rewards = [Env2048(state=state).act(i)[1] for i in range(4)]
         if np.max(rewards)>0:
             return np.argmax(rewards)
         else:
             return np.random.randint(4)
+        
 class MultiStepPlayer():
+    """
+    A player which will search steps depth.
+    on 100 simulations:
+        2 steps depth: average score 7648, max score 16132
+        3 steps depth: average score 8609, max score 16248
+    """
     def __init__(self, name = 'Mutil Step Player', steps=2):
         self.name_ = name
         self.n_steps_ = steps
     def genmove(self, state):
         rewards = np.zeros(4, dtype=np.int32)
         for i in range(4):
-            env = env_2048(state=state)
+            env = Env2048(state=state)
             new_state, rewards[i], _ = env.act(i)
             for j in range(self.n_steps_-1):
                 new_state, reward, _ = env.act(OneStepPlayer().genmove(new_state))
                 rewards[i] += reward
-        # print(rewards)
         if np.max(rewards)>0:
             return np.argmax(rewards)
         else:
             return np.random.randint(4)
+
 def play_once(env, player):
     epoch=1
     while 1:
@@ -151,8 +168,9 @@ def play_once(env, player):
 #    print('Ehoch %d: score %d'%(epoch, ret))
 #    print(env)
     return ret
+
 def test_player(player, n_episodes):
-    env = env_2048()
+    env = Env2048()
     sum_ret = 0
     max_ret = 0
     for episode in range(n_episodes):
@@ -160,17 +178,22 @@ def test_player(player, n_episodes):
         ret = play_once(env, player)
         sum_ret += ret
         if ret>max_ret:
-            print(env)
+#            print(env)
             max_ret = ret
     print('%s average score %d, max score %d'%(player.name_, sum_ret/n_episodes, max_ret))
 
-if __name__ == '__main__':
+def __test__():
     s=np.array([[0, 0, 0, 0],
                 [1, 0, 0, 0],
                 [0, 0, 0, 0],
                 [0, 0, 1, 0]], dtype=np.int8)
-    
-    n_episodes = 50
+    env = Env2048(state=s)
+    print(env)
+    env.act(1)
+    print(env)
+
+if __name__ == '__main__':
+    n_episodes = 10
 #    test_player(RandomPlayer(), n_episodes)
     test_player(MultiStepPlayer(steps=2), n_episodes)
     

@@ -7,7 +7,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.autograd import Variable
 import torchvision.transforms as T
-import env
+import env2048
 
 class DQN(nn.Module):
     def __init__(self):
@@ -90,40 +90,54 @@ def select_action(state):
     n=convert_state2net(state)
     n.resize_(1,16,4,4)
     net.forward(Variable(n))
-def training():
-    for i_episode in range(num_episodes):
-        # Initialisze the environment and state
-        env.reset()
-        last_screen = get_screen()
-        current_screen = get_screen()
-        state = env.get_state()
-        for t in count():
-            # Select and perform an action
-            action = select_action(state)
-            _, reward, done, _ = env.step(action[0, 0])
-            reward = Tensor([reward])
 
-            # Observe new state
-            last_screen = current_screen
+class DQNPlayer():
+    def __init__(self, name = 'DQN Player', eps = 0.8):
+        self.name_ = name
+        self.eps_ = eps
+        self.dqn_ = DQN()
+    def genmove(self, state, greedy=False):
+        if greedy or np.random.random()<self.eps_:
+            n = convert_state2net(state)
+            n.resize_(1,16,4,4)
+            return torch.max(self.dqn_.forward(Variable(n)).data,1)[1][0]
+        else:
+            return np.random.randint(4)
+    def training(num_episodes):
+        env = env2048.Env2048()
+        for i_episode in range(num_episodes):
+            # Initialisze the environment and state
+            env.reset()
+            last_screen = get_screen()
             current_screen = get_screen()
-            if not done:
-                next_state = current_screen - last_screen
-            else:
-                next_state = None
-
-            # Store the transition in memory
-            memory.push(state, action, next_state, reward)
-
-            # Move to the next state
-            state = next_state
-
-            # Perform one step of the optimization (on the target network)
-            optimize_model()
-            if done:
-                episode_durations.append(t + 1)
-                plot_durations()
-                break
-if __name__ == '__main__':
+            state = env.get_state()
+            for t in count():
+                # Select and perform an action
+                action = select_action(state)
+                _, reward, done, _ = env.step(action[0, 0])
+                reward = Tensor([reward])
+    
+                # Observe new state
+                last_screen = current_screen
+                current_screen = get_screen()
+                if not done:
+                    next_state = current_screen - last_screen
+                else:
+                    next_state = None
+    
+                # Store the transition in memory
+                memory.push(state, action, next_state, reward)
+    
+                # Move to the next state
+                state = next_state
+    
+                # Perform one step of the optimization (on the target network)
+                optimize_model()
+                if done:
+                    episode_durations.append(t + 1)
+                    plot_durations()
+                    break
+def __test__():
     net = DQN()
     s=np.array([[0, 0, 0, 0],
                 [1, 0, 0, 0],
@@ -132,5 +146,7 @@ if __name__ == '__main__':
     n=convert_state2net(s)
     n.resize_(1,16,4,4)
     print(net.forward(Variable(n)))
-    num_episodes = 10
     
+if __name__ == '__main__':
+    n_episodes = 10
+    env2048.test_player(DQNPlayer(), n_episodes)

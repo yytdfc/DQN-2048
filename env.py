@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
+ACTION_MAP = [ '↑','↓','←','→']
 class env_2048(object):
     def __init__(self, dim=4, base=2, state=None):
         self.dim_ = dim
@@ -120,15 +121,18 @@ class OneStepPlayer():
             return np.argmax(rewards)
         else:
             return np.random.randint(4)
-class TwoStepPlayer():
-    def __init__(self, name = 'One Step Player'):
+class MultiStepPlayer():
+    def __init__(self, name = 'Mutil Step Player', steps=2):
         self.name_ = name
+        self.n_steps_ = steps
     def genmove(self, state):
         rewards = np.zeros(4, dtype=np.int32)
         for i in range(4):
             env = env_2048(state=state)
             new_state, rewards[i], _ = env.act(i)
-            rewards[i] += env.act(OneStepPlayer().genmove(new_state))[1]
+            for j in range(self.n_steps_-1):
+                new_state, reward, _ = env.act(OneStepPlayer().genmove(new_state))
+                rewards[i] += reward
         # print(rewards)
         if np.max(rewards)>0:
             return np.argmax(rewards)
@@ -144,18 +148,11 @@ def play_once(env, player):
         epoch+=1
         # print('Ehoch %d: act %s'%(epoch, a))
     ret = env.get_return()
-    print('Ehoch %d: score %d'%(epoch, ret))
-    # print(env)
+#    print('Ehoch %d: score %d'%(epoch, ret))
+#    print(env)
     return ret
-if __name__ == '__main__':
-    act_map = [ '↑','↓','←','→']
-    s=np.array([[0, 0, 0, 0],
-                [1, 0, 0, 0],
-                [0, 0, 0, 0],
-                [0, 0, 1, 0]], dtype=np.int8)
+def test_player(player, n_episodes):
     env = env_2048()
-    n_episodes = 50
-    player = RandomPlayer()
     sum_ret = 0
     max_ret = 0
     for episode in range(n_episodes):
@@ -167,14 +164,13 @@ if __name__ == '__main__':
             max_ret = ret
     print('%s average score %d, max score %d'%(player.name_, sum_ret/n_episodes, max_ret))
 
-    player = TwoStepPlayer()
-    sum_ret = 0
-    max_ret = 0
-    for episode in range(n_episodes):
-        env.reset()
-        ret = play_once(env, player)
-        sum_ret += ret
-        if ret>max_ret:
-            print(env)
-            max_ret = ret
-    print('%s average score %d, max score %d'%(player.name_, sum_ret/n_episodes, max_ret))
+if __name__ == '__main__':
+    s=np.array([[0, 0, 0, 0],
+                [1, 0, 0, 0],
+                [0, 0, 0, 0],
+                [0, 0, 1, 0]], dtype=np.int8)
+    
+    n_episodes = 50
+#    test_player(RandomPlayer(), n_episodes)
+    test_player(MultiStepPlayer(steps=2), n_episodes)
+    

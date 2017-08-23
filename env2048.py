@@ -147,7 +147,7 @@ class MultiStepPlayer():
         for i in range(4):
             env = Env2048(state=state)
             new_state, rewards[i], _ = env.act(i)
-            for j in range(self.n_steps_-1):
+            for _ in range(self.n_steps_-1):
                 new_state, reward, _ = env.act(OneStepPlayer().genmove(new_state))
                 rewards[i] += reward
         if np.max(rewards)>0:

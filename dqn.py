@@ -1,13 +1,44 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
+import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from torch.autograd import Variable
+from collections import namedtuple
 import torchvision.transforms as T
 import env2048
+
+use_cuda = torch.cuda.is_available()
+FloatTensor = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor
+LongTensor = torch.cuda.LongTensor if use_cuda else torch.LongTensor
+ByteTensor = torch.cuda.ByteTensor if use_cuda else torch.ByteTensor
+Tensor = FloatTensor
+
+Transition = namedtuple('Transition',
+                        ('state', 'action', 'next_state', 'reward'))
+
+class ReplayMemory(object):
+
+    def __init__(self, capacity):
+        self.capacity = capacity
+        self.memory = []
+        self.position = 0
+
+    def push(self, *args):
+        """Saves a transition."""
+        if len(self.memory) < self.capacity:
+            self.memory.append(None)
+        self.memory[self.position] = Transition(*args)
+        self.position = (self.position + 1) % self.capacity
+
+    def sample(self, batch_size):
+        return random.sample(self.memory, batch_size)
+
+    def __len__(self):
+        return len(self.memory)
 
 class DQN(nn.Module):
     def __init__(self):
@@ -34,29 +65,36 @@ class DQN(nn.Module):
         return self.head(x.view(x.size(0), -1))
 
 def convert_state2net(state):
-    n = torch.FloatTensor(16,16).fill_(0)
+    n = Tensor(16,16).fill_(0)
     for i,c in enumerate(state.flatten()):
         n[c,i]=1
-    n.resize_(16,4,4)
+    n.resize_(1,16,4,4)
     return n
 
 class DQNPlayer():
     def __init__(self, name = 'DQN Player', eps = 0.2):
         self.name_ = name
         self.eps_ = eps
+        self.batch_size_ = 128
+        self.gamma_ = 0.999
         self.dqn_ = DQN()
-    def genmove(self, state, greedy=False):
+        if use_cuda:
+            self.dqn_.cuda()
+        self.optimizer_ = optim.RMSprop(self.dqn_.parameters())
+        self.memory_ = ReplayMemory(10000)
+        self.average_ = 0
+        self.trained_ = 0
+    def select_action(self, state, greedy=False):
         if greedy or np.random.random()>self.eps_:
             n = convert_state2net(state)
-            n.resize_(1,16,4,4)
-            return torch.max(self.dqn_.forward(Variable(n)).data,1)[1][0]
+#            n.resize_(1,16,4,4)
+            return torch.max(self.dqn_(Variable(n)).data,1)[1][0]
         else:
             return np.random.randint(4)
-    def optimize_model():
-        global last_sync
-        if len(memory) < BATCH_SIZE:
+    def optimize_model(self):
+        if len(self.memory_) < 128:
             return
-        transitions = memory.sample(BATCH_SIZE)
+        transitions = self.memory_.sample(self.batch_size_)
         # Transpose the batch (see http://stackoverflow.com/a/19343/3343043 for
         # detailed explanation).
         batch = Transition(*zip(*transitions))
@@ -77,61 +115,63 @@ class DQNPlayer():
     
         # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
         # columns of actions taken
-        state_action_values = model(state_batch).gather(1, action_batch)
+        state_action_values = self.dqn_(state_batch).gather(1, action_batch)
     
         # Compute V(s_{t+1}) for all next states.
-        next_state_values = Variable(torch.zeros(BATCH_SIZE).type(Tensor))
-        next_state_values[non_final_mask] = model(non_final_next_states).max(1)[0]
+        next_state_values = Variable(torch.zeros(self.batch_size_).type(Tensor))
+        next_state_values[non_final_mask] = self.dqn_(non_final_next_states).max(1)[0]
         # Now, we don't want to mess up the loss with a volatile flag, so let's
         # clear it. After this, we'll just end up with a Variable that has
         # requires_grad=False
         next_state_values.volatile = False
         # Compute the expected Q values
-        expected_state_action_values = (next_state_values * GAMMA) + reward_batch
+        expected_state_action_values = (next_state_values * self.gamma_) + reward_batch
     
         # Compute Huber loss
         loss = F.smooth_l1_loss(state_action_values, expected_state_action_values)
     
         # Optimize the model
-        optimizer.zero_grad()
+        self.optimizer_.zero_grad()
         loss.backward()
-        for param in model.parameters():
+        for param in self.dqn_.parameters():
             param.grad.data.clamp_(-1, 1)
-        optimizer.step()
-    def training(num_episodes):
+        self.optimizer_.step()
+        
+    def training(self, num_episodes):
         env = env2048.Env2048()
         for i_episode in range(num_episodes):
             # Initialisze the environment and state
             env.reset()
-            last_screen = get_screen()
-            current_screen = get_screen()
             state = env.get_state()
-            for t in count():
+            while 1:
                 # Select and perform an action
-                action = select_action(state)
-                _, reward, done, _ = env.step(action[0, 0])
-                reward = Tensor([reward])
-    
+                action = self.select_action(state)
+                _, reward, done = env.step(action)
+                reward = Tensor(1).fill_(float(reward))
+
                 # Observe new state
-                last_screen = current_screen
-                current_screen = get_screen()
                 if not done:
-                    next_state = current_screen - last_screen
+                    next_state = env.get_state()
                 else:
                     next_state = None
+                    self.average_ = (env.get_return() + self.average_ 
+                                     * self.trained_) / (self.trained_ + 1)
+                    self.trained_ += 1
+                    print('epicode %d, score: %d, average score %f'%(i_episode,
+                                        env.get_return(), self.average_))
+                    break
     
                 # Store the transition in memory
-                memory.push(state, action, next_state, reward)
+                self.memory_.push(convert_state2net(state), LongTensor([[action]]), convert_state2net(next_state), reward)
     
                 # Move to the next state
                 state = next_state
     
                 # Perform one step of the optimization (on the target network)
-                optimize_model()
+                self.optimize_model()
                 if done:
-                    episode_durations.append(t + 1)
-                    plot_durations()
                     break
+                
 def __test__():
     net = DQN()
     s=np.array([[0, 0, 0, 0],
@@ -144,4 +184,6 @@ def __test__():
     
 if __name__ == '__main__':
     n_episodes = 10
-    env2048.test_player(DQNPlayer(), n_episodes)
+#    player = DQNPlayer()
+    player.training(100)
+    env2048.test_player(player, n_episodes)

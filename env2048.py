@@ -32,7 +32,7 @@ class Env2048(object):
         self.state_ = np.zeros((self.dim_,self.dim_), dtype=np.int8)
         self.add_start_tile()
         self.score_ = 0
-    def act(self, action):
+    def step(self, action):
         score = self.score_
         if self.move(action):
             self.add_random_tile()
@@ -115,7 +115,7 @@ class RandomPlayer():
     """
     def __init__(self, name = 'Random Player'):
         self.name_ = name
-    def genmove(self, state):
+    def select_action(self, state):
         return np.random.randint(4)
     
 class OneStepPlayer():
@@ -125,8 +125,8 @@ class OneStepPlayer():
     """
     def __init__(self, name = 'One Step Player'):
         self.name_ = name
-    def genmove(self, state):
-        rewards = [Env2048(state=state).act(i)[1] for i in range(4)]
+    def select_action(self, state):
+        rewards = [Env2048(state=state).step(i)[1] for i in range(4)]
         if np.max(rewards)>0:
             return np.argmax(rewards)
         else:
@@ -142,13 +142,13 @@ class MultiStepPlayer():
     def __init__(self, name = 'Mutil Step Player', steps=2):
         self.name_ = name
         self.n_steps_ = steps
-    def genmove(self, state):
+    def select_action(self, state):
         rewards = np.zeros(4, dtype=np.int32)
         for i in range(4):
             env = Env2048(state=state)
-            new_state, rewards[i], _ = env.act(i)
+            new_state, rewards[i], _ = env.step(i)
             for _ in range(self.n_steps_-1):
-                new_state, reward, _ = env.act(OneStepPlayer().genmove(new_state))
+                new_state, reward, _ = env.step(OneStepPlayer().select_action(new_state))
                 rewards[i] += reward
         if np.max(rewards)>0:
             return np.argmax(rewards)
@@ -158,12 +158,12 @@ class MultiStepPlayer():
 def play_once(env, player):
     epoch=1
     while 1:
-        a = player.genmove(env.get_state())
-        _, r, t = env.act(a)
+        a = player.select_action(env.get_state())
+        _, r, t = env.step(a)
         if t:
             break
         epoch+=1
-        # print('Ehoch %d: act %s'%(epoch, a))
+        # print('Ehoch %d: step %s'%(epoch, a))
     ret = env.get_return()
 #    print('Ehoch %d: score %d'%(epoch, ret))
 #    print(env)
@@ -189,11 +189,11 @@ def __test__():
                 [0, 0, 1, 0]], dtype=np.int8)
     env = Env2048(state=s)
     print(env)
-    env.act(1)
+    env.step(1)
     print(env)
 
 if __name__ == '__main__':
     n_episodes = 10
-#    test_player(RandomPlayer(), n_episodes)
+    test_player(RandomPlayer(), n_episodes)
     test_player(MultiStepPlayer(steps=2), n_episodes)
     

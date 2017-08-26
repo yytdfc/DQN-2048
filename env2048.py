@@ -193,7 +193,7 @@ def __test__():
     print(env)
 
 if __name__ == '__main__':
-    n_episodes = 10
+    n_episodes = 100
     test_player(RandomPlayer(), n_episodes)
-    test_player(MultiStepPlayer(steps=2), n_episodes)
+    test_player(MultiStepPlayer(steps=1), n_episodes)
     

@@ -11,7 +11,7 @@ from collections import namedtuple
 import env2048
 
 # if gpu is to be used
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 Transition = namedtuple('Transition',
                         ('state', 'action', 'next_state', 'reward'))
@@ -80,7 +80,7 @@ class DQNPlayer():
         return_item = False
         if type(state) is np.ndarray:
             return_item = True
-            state = torch.tensor(env2048.state2tensor(state))
+            state = torch.tensor(env2048.state2tensor(state), device=device, dtype=torch.float32)
         if greedy or np.random.random() > self.eps_:
             with torch.no_grad():
                 ret = self.policy_net_(state).max(1)[1].view(1, 1)
@@ -91,8 +91,8 @@ class DQNPlayer():
             return ret.item()
         else:
             return ret
-        
-        
+
+
     def optimize_model(self):
         if len(self.memory_) < self.batch_size_:
             return
@@ -142,7 +142,7 @@ class DQNPlayer():
         for i_episode in range(num_episodes):
             # Initialize the environment and state
             env.reset()
-            state = torch.tensor(env.to_tensor())
+            state = torch.tensor(env.to_tensor(), device=device, dtype=torch.float32)
             for i_step in range(100000):
                 # Select and perform an action
                 action = self.select_action(state)
@@ -151,10 +151,10 @@ class DQNPlayer():
                     [reward], device=device, dtype=torch.float32)
 #                print('Reward %f'%(reward))
                 if not done:
-                    next_state = torch.tensor(env.to_tensor())
+                    next_state = torch.tensor(env.to_tensor(), device=device, dtype=torch.float32)
                 else:
                     next_state = None
-                    
+
                 # Store the transition in memory
                 self.memory_.push(state, action, next_state, reward)
 
@@ -180,30 +180,26 @@ class DQNPlayer():
             self.trained_ += 1
             self.eps_ = self.eps_end_ + np.exp(
                 -self.trained_ / 200) * (0.9 - 0.05)
-            print('Episode %3d, steps %d, score %5d, avg %5.0f, eps %.4f' %
+            print('Episode %3d, steps %4d, score %5d, avg %5.0f, eps %.4f' %
                   (self.trained_, i_step, env.get_return(), self.average_, self.eps_))
-            s = np.array(
-                [[0, 0, 0, 0], [1, 2, 3, 0], [1, 2, 3, 0], [0, 0, 1, 0]],
-                dtype=np.int8)
-            print(self.policy_net_.forward(torch.tensor(env2048.state2tensor(s))))
 
 
 def __test__():
-    net = DQN()
+    net = DQN().to(device)
     s = np.array(
         [[0, 0, 0, 0], [1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 1, 0]],
         dtype=np.int8)
-    print(net.forward(torch.tensor(env2048.state2tensor(s))))
+    print(net.forward(torch.tensor(env2048.state2tensor(s), device=device, dtype=torch.float32)))
     player = DQNPlayer()
-    print(player.policy_net_.forward(torch.tensor(env2048.state2tensor(s))))
+    print(player.policy_net_.forward(torch.tensor(env2048.state2tensor(s), device=device, dtype=torch.float32)))
     print(player.select_action(s))
     env2048.test_player(player, 10)
 
 
 if __name__ == '__main__':
-    n_episodes = 200
+    n_episodes = 2000
     player = DQNPlayer()
     player.training(n_episodes)
     player.eps_=0.05
-    env2048.test_player(player, 10)
-    
+    env2048.test_player(player, 100)
+

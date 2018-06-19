@@ -65,7 +65,7 @@ class DQNPlayer():
         self.eps_ = eps
         self.eps_end_ = 0.05
         self.batch_size_ = 128
-        self.gamma_ = 0.999
+        self.gamma_ = 0.9
         self.policy_net_ = DQN().to(device)
         self.target_net_ = DQN().to(device)
         self.target_net_.load_state_dict(self.policy_net_.state_dict())
@@ -77,14 +77,22 @@ class DQNPlayer():
         self.TARGET_UPDATE = 10
 
     def select_action(self, state, greedy=False):
+        return_item = False
+        if type(state) is np.ndarray:
+            return_item = True
+            state = torch.tensor(env2048.state2tensor(state))
         if greedy or np.random.random() > self.eps_:
-            #            return torch.max(self.policy_net_(Variable(n)).data, 1)[1][0]
             with torch.no_grad():
-                return self.policy_net_(state).max(1)[1].view(1, 1)
+                ret = self.policy_net_(state).max(1)[1].view(1, 1)
         else:
-            return torch.tensor(
+            ret = torch.tensor(
                 [[random.randrange(4)]], device=device, dtype=torch.long)
-
+        if return_item:
+            return ret.item()
+        else:
+            return ret
+        
+        
     def optimize_model(self):
         if len(self.memory_) < self.batch_size_:
             return
@@ -135,17 +143,18 @@ class DQNPlayer():
             # Initialize the environment and state
             env.reset()
             state = torch.tensor(env.to_tensor())
-            while (1):
+            for i_step in range(100000):
                 # Select and perform an action
                 action = self.select_action(state)
                 _, reward, done, _ = env.step(action.item())
                 reward = torch.tensor(
                     [reward], device=device, dtype=torch.float32)
-
+#                print('Reward %f'%(reward))
                 if not done:
                     next_state = torch.tensor(env.to_tensor())
                 else:
                     next_state = None
+                    
                 # Store the transition in memory
                 self.memory_.push(state, action, next_state, reward)
 
@@ -156,11 +165,8 @@ class DQNPlayer():
                 self.optimize_model()
                 if done:
                     break
-#                if done:
-#                    episode_durations.append(t + 1)
-#                    plot_durations()
-#                    break
-# Update the target network
+
+            # Update the target network
             if i_episode % self.TARGET_UPDATE == 0:
                 self.target_net_.load_state_dict(self.policy_net_.state_dict())
 
@@ -174,8 +180,12 @@ class DQNPlayer():
             self.trained_ += 1
             self.eps_ = self.eps_end_ + np.exp(
                 -self.trained_ / 200) * (0.9 - 0.05)
-            print('epi %3d, score %5d, avg %5.0f, eps %.4f' %
-                  (self.trained_, env.get_return(), self.average_, self.eps_))
+            print('Episode %3d, steps %d, score %5d, avg %5.0f, eps %.4f' %
+                  (self.trained_, i_step, env.get_return(), self.average_, self.eps_))
+            s = np.array(
+                [[0, 0, 0, 0], [1, 2, 3, 0], [1, 2, 3, 0], [0, 0, 1, 0]],
+                dtype=np.int8)
+            print(self.policy_net_.forward(torch.tensor(env2048.state2tensor(s))))
 
 
 def __test__():
@@ -183,30 +193,17 @@ def __test__():
     s = np.array(
         [[0, 0, 0, 0], [1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 1, 0]],
         dtype=np.int8)
-    n = convert_state2net(s)
-    n.resize_(1, 16, 4, 4)
-    print(net.forward(Variable(n)))
+    print(net.forward(torch.tensor(env2048.state2tensor(s))))
+    player = DQNPlayer()
+    print(player.policy_net_.forward(torch.tensor(env2048.state2tensor(s))))
+    print(player.select_action(s))
+    env2048.test_player(player, 10)
 
 
 if __name__ == '__main__':
     n_episodes = 200
     player = DQNPlayer()
     player.training(n_episodes)
-    #    player.eps_=0.1
-    #    env2048.test_player(player, 10)
-    s = np.array(
-        [[0, 0, 0, 0], [1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 1, 0]],
-        dtype=np.int8)
-    print(player.policy_net_.forward(torch.tensor(env2048.state2tensor(s))))
-    s = np.array(
-        [[0, 0, 0, 0], [3, 0, 0, 0], [0, 0, 0, 0], [0, 0, 3, 0]],
-        dtype=np.int8)
-    print(player.policy_net_.forward(torch.tensor(env2048.state2tensor(s))))
-    s = np.array(
-        [[0, 0, 0, 0], [1, 2, 3, 0], [1, 2, 3, 0], [0, 0, 1, 0]],
-        dtype=np.int8)
-    print(player.policy_net_.forward(torch.tensor(env2048.state2tensor(s))))
-    s = np.array(
-        [[1, 2, 0, 2], [4, 0, 0, 1], [2, 0, 0, 0], [0, 0, 0, 1]],
-        dtype=np.int8)
-    print(player.policy_net_.forward(Variable(convert_state2net(s))))
+    player.eps_=0.05
+    env2048.test_player(player, 10)
+    

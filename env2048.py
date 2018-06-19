@@ -60,7 +60,7 @@ class Env2048(object):
             return self.state_.copy(), self.score_ - score0, self.is_terminate(
             ), ''
         else:
-            return self.state_.copy(), 0, self.is_terminate(), ''
+            return self.state_.copy(), -8, self.is_terminate(), ''
 
     def get_return(self):
         return self.score_
@@ -186,9 +186,9 @@ class MultiStepPlayer():
         rewards = np.zeros(4, dtype=np.int32)
         for i in range(4):
             env = Env2048(state=state)
-            new_state, rewards[i], _ = env.step(i)
+            new_state, rewards[i], _, _ = env.step(i)
             for _ in range(self.n_steps_ - 1):
-                new_state, reward, _ = env.step(
+                new_state, reward, _, _ = env.step(
                     OneStepPlayer().select_action(new_state))
                 rewards[i] += reward
         if np.max(rewards) > 0:
@@ -201,7 +201,7 @@ def play_once(env, player):
     epoch = 1
     while 1:
         a = player.select_action(env.get_state())
-        _, r, t = env.step(a)
+        _, r, t, _ = env.step(a)
         if t:
             break
         epoch += 1
@@ -225,7 +225,6 @@ def test_player(player, n_episodes):
             max_ret = ret
     print('%s average score %d, max score %d' %
           (player.name_, sum_ret / n_episodes, max_ret))
-
 
 def __test__():
     s = np.array(
